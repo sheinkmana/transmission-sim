@@ -215,3 +215,53 @@ def choice(
     values = jnp.asarray(values)
     idx = random.randint(rng, shape, minval=0, maxval=len(values))
     return values[idx]
+
+
+def uniform_loguniform_mixture(
+    rng: Array,
+    minval: float,
+    maxval: float,
+    low_minval: float,
+    low_maxval: float,
+    low_weight: float,
+    shape: Sequence[int],
+) -> Array:
+    """Mix broad uniform coverage with extra log-uniform coverage at low values.
+
+    Each draw independently chooses the low component with probability
+    ``low_weight``. The remaining draws use Uniform(minval, maxval).
+    """
+    if not (minval <= low_minval < low_maxval <= maxval and low_minval > 0):
+        raise ValueError("Positive low bounds must lie inside the uniform interval.")
+    if not 0 <= low_weight <= 1:
+        raise ValueError("low_weight must be between 0 and 1.")
+    component_key, broad_key, low_key = random.split(rng, 3)
+    use_low = random.bernoulli(component_key, float(low_weight), shape)
+    broad = random.uniform(broad_key, shape, minval=minval, maxval=maxval)
+    low = loguniform(low_key, low_minval, low_maxval, shape)
+    return jnp.where(use_low, low, broad)
+
+
+def rounded_loguniform(
+    rng: Array,
+    minval: int,
+    maxval: int,
+    shape: Sequence[int],
+) -> Array:
+    """Round a continuous log-uniform draw to an integer within inclusive bounds."""
+    if not (0 < minval < maxval and int(minval) == minval and int(maxval) == maxval):
+        raise ValueError("Bounds must be positive increasing integers.")
+    samples = loguniform(rng, minval, maxval, shape)
+    return jnp.clip(jnp.rint(samples), minval, maxval).astype(jnp.int32)
+
+
+def negative_beta(
+    rng: Array,
+    a: float,
+    b: float,
+    shape: Sequence[int],
+) -> Array:
+    """Sample -Beta(a, b), for nonpositive within-host selection."""
+    if a <= 0 or b <= 0:
+        raise ValueError("Beta shape parameters must be positive.")
+    return -random.beta(rng, a, b, shape=shape)
